@@ -1,15 +1,8 @@
-﻿// 包含头文件
-#include <stdlib.h>
+﻿#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include "fft.h"
 
-// 内部常量定义
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-// 内部类型定义
 typedef struct {
     int    N;
     float *W;
@@ -17,7 +10,6 @@ typedef struct {
     int   *order;
 } FFT_CONTEXT;
 
-// 内部函数实现
 // r = c1 + c2
 static void complex_add(float *r, float *c1, float *c2)
 {
@@ -49,6 +41,14 @@ static int reverse_bits(int n)
     return n;
 }
 
+/**
+ * @brief FFT 内部处理单元
+ * 
+ * @param ctxt 蝶形单元缓存区
+ * @param data 待处理数据
+ * @param n 数据长度
+ * @param w 级数
+ */
 static void fft_execute_internal(FFT_CONTEXT *ctxt, float *data, int n, int w)
 {
     int i;
@@ -74,7 +74,6 @@ static void fft_execute_internal(FFT_CONTEXT *ctxt, float *data, int n, int w)
     }
 }
 
-// 函数实现
 void *fft_init(int n)
 {
     int shift;
@@ -126,7 +125,7 @@ void fft_execute(void *c, float *in, float *out)
     }
 }
 
-#if _TEST_
+#ifdef _TEST_FFT
 #include <stdio.h>
 
 static void dft(float *in, float *out, int n)

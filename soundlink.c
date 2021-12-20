@@ -9,16 +9,20 @@
 #include "soundlink.h"
 
 /*
-8KHz ²ÉÑùÂÊ£¬1000ms ·ÖÎª 40 ¸öÆ¬¶Î£¬Ã¿¸ö·Ö¶Î 25ms£¬200 ¸ö²ÉÑùµã
-start byte + length byte + data bytes + 2 bytes checksum
- */
+sample_rate: 8000KHz
+window: length=0.025s, 200 pointsï¼Œ 4bit
+data pack:start byte + length byte + data bytes + 2 bytes checksum
 
-#define SOUNDLINK_MTU                255
-#define SOUNDLINK_FFT_LEN            128
-#define SOUNDLINK_FREQ_TO_IDX(freq) ((freq) * SOUNDLINK_FFT_LEN / 8000)
-#define SOUNDLINK_IDX_TO_FREQ(idx ) ( 8000 * (idx) / SOUNDLINK_FFT_LEN)
+é¢‘çŽ‡å•ä½ KHz
+
+*/
+#define SAMPLE_RATE 8000
+#define SOUNDLINK_MTU                255 //max_data_length
+#define SOUNDLINK_FFT_LEN            128 //FFT é¢‘çŽ‡ç‚¹æ•°
+#define SOUNDLINK_FREQ_TO_IDX(freq) ((freq) * SOUNDLINK_FFT_LEN / SAMPLE_RATE)
+#define SOUNDLINK_IDX_TO_FREQ(idx ) ( SAMPLE_RATE * (idx) / SOUNDLINK_FFT_LEN)
 #define SOUNDLINK_MIN_FREQ_IDX       SOUNDLINK_FREQ_TO_IDX(500)
-#define SOUNDLINK_MAX_FREQ_IDX      (SOUNDLINK_MIN_FREQ_IDX + 15)
+#define SOUNDLINK_MAX_FREQ_IDX      (SOUNDLINK_MIN_FREQ_IDX + 15) //æœ€é«˜é¢‘çŽ‡
 #define SOUNDLINK_START_CODE_IDX    (SOUNDLINK_MIN_FREQ_IDX + 17)
 #define LOW_NIBBLE_TO_FREQ(byte)     SOUNDLINK_IDX_TO_FREQ(SOUNDLINK_MIN_FREQ_IDX + (((byte) >> 0) & 0xF))
 #define HIGH_NIBBLE_TO_FREQ(byte)    SOUNDLINK_IDX_TO_FREQ(SOUNDLINK_MIN_FREQ_IDX + (((byte) >> 4) & 0xF))
@@ -46,7 +50,10 @@ typedef struct {
 
 static void gen_sin_wav(int16_t *pcm, int n, int samprate, int freq)
 {
-    int i; for (i=0; i<n; i++) pcm[i] = 32760 * sin(i * 2 * M_PI * freq / samprate);
+    for (int i=0; i<n; i++)
+    {
+        pcm[i] = 32760 * sin(i * 2 * M_PI * freq / samprate);
+    }
 }
 
 static void wavein_callback_proc(void *ctxt, void *buf, int len)
@@ -132,8 +139,8 @@ void* soundlink_init(void)
 {
     SOUNDLINK *sl = calloc(1, sizeof(SOUNDLINK));
     if (sl) {
-        sl->wavfile = wavfile_create(8000, 1, (1 + 1 + SOUNDLINK_MTU + 2) * 2 * 250);
-        sl->wavdev  = wavdev_init(8000, 1, 8000, 1, wavein_callback_proc, sl);
+        sl->wavfile = wavfile_create(SAMPLE_RATE, 1, (1 + 1 + SOUNDLINK_MTU + 2) * 2 * 250);
+        sl->wavdev  = wavdev_init(SAMPLE_RATE, 1, SAMPLE_RATE, 1, wavein_callback_proc, sl);
         sl->fft     = fft_init(128);
         if (!sl->wavfile || !sl->wavdev || !sl->fft) { soundlink_exit(sl); sl = NULL; }
     }
@@ -164,25 +171,25 @@ int soundlink_send(void *ctxt, char *buf, int len, char *dst)
 
     // generate start code
     wavfile_getval(sl->wavfile, "buffer_pointer", &pcmbuf);
-    gen_sin_wav(pcmbuf, 200, 8000, SOUNDLINK_IDX_TO_FREQ(SOUNDLINK_START_CODE_IDX)); pcmbuf += 200;
-    gen_sin_wav(pcmbuf, 200, 8000, SOUNDLINK_IDX_TO_FREQ(SOUNDLINK_START_CODE_IDX)); pcmbuf += 200;
+    gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, SOUNDLINK_IDX_TO_FREQ(SOUNDLINK_START_CODE_IDX)); pcmbuf += 200;
+    gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, SOUNDLINK_IDX_TO_FREQ(SOUNDLINK_START_CODE_IDX)); pcmbuf += 200;
 
     // generate length
-    gen_sin_wav(pcmbuf, 200, 8000, LOW_NIBBLE_TO_FREQ( n)); pcmbuf += 200;
-    gen_sin_wav(pcmbuf, 200, 8000, HIGH_NIBBLE_TO_FREQ(n)); pcmbuf += 200;
+    gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, LOW_NIBBLE_TO_FREQ( n)); pcmbuf += 200;
+    gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, HIGH_NIBBLE_TO_FREQ(n)); pcmbuf += 200;
 
     // generate data
     for (checksum = n, i = 0; i < n; i++) {
-        gen_sin_wav(pcmbuf, 200, 8000, LOW_NIBBLE_TO_FREQ( buf[i])); pcmbuf += 200;
-        gen_sin_wav(pcmbuf, 200, 8000, HIGH_NIBBLE_TO_FREQ(buf[i])); pcmbuf += 200;
+        gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, LOW_NIBBLE_TO_FREQ( buf[i])); pcmbuf += 200;
+        gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, HIGH_NIBBLE_TO_FREQ(buf[i])); pcmbuf += 200;
         checksum += buf[i];
     }
 
     // generate checksum
-    gen_sin_wav(pcmbuf, 200, 8000, LOW_NIBBLE_TO_FREQ( (checksum >> 0) & 0xFF)); pcmbuf += 200;
-    gen_sin_wav(pcmbuf, 200, 8000, HIGH_NIBBLE_TO_FREQ((checksum >> 0) & 0xFF)); pcmbuf += 200;
-    gen_sin_wav(pcmbuf, 200, 8000, LOW_NIBBLE_TO_FREQ( (checksum >> 8) & 0xFF)); pcmbuf += 200;
-    gen_sin_wav(pcmbuf, 200, 8000, HIGH_NIBBLE_TO_FREQ((checksum >> 8) & 0xFF)); pcmbuf += 200;
+    gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, LOW_NIBBLE_TO_FREQ( (checksum >> 0) & 0xFF)); pcmbuf += 200;
+    gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, HIGH_NIBBLE_TO_FREQ((checksum >> 0) & 0xFF)); pcmbuf += 200;
+    gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, LOW_NIBBLE_TO_FREQ( (checksum >> 8) & 0xFF)); pcmbuf += 200;
+    gen_sin_wav(pcmbuf, 200, SAMPLE_RATE, HIGH_NIBBLE_TO_FREQ((checksum >> 8) & 0xFF)); pcmbuf += 200;
 
     if (strcmp(dst, "wavdev") == 0) {
         wavfile_getval(sl->wavfile, "buffer_pointer", &pcmbuf);
